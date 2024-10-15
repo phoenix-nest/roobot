@@ -1,9 +1,10 @@
-use serenity::all::{ChannelId, Http, Message, MessageId};
+use std::future::Future;
 
-pub(crate) fn find_last_existing_msg(
-    http: &Http,
-    channel: ChannelId,
-    msgs: impl IntoIterator<Item = MessageId>,
-) -> Option<MessageId> {
-    todo!()
+use serenity::all::{ChannelId, Http, Message, MessageId};
+use tracing::error;
+
+pub async fn send_or_log<T>(send: impl Future<Output = serenity::Result<T>>) {
+    if let Err(e) = send.await {
+        error!(error = "Unable to send message/reply", err = e.to_string());
+    }
 }

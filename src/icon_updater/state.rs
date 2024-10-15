@@ -1,9 +1,12 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, VecDeque},
+    str::FromStr,
+};
 
+use chrono::{DateTime, TimeZone, Utc};
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, MessageId, UserId};
-use time::Date;
 
 #[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct State {
@@ -40,12 +43,12 @@ pub(crate) struct ServerSettings {
 
 #[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize, Default)]
 pub(crate) struct ServerState {
-    pub(crate) queue: Vec<Update>,
+    pub(crate) next_update: DateTime<Utc>,
+    pub(crate) queue: VecDeque<Update>,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Update {
-    pub(crate) at: Date,
     pub(crate) message: MessageId,
     pub(crate) user: UserId,
 }
