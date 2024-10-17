@@ -5,7 +5,7 @@ pub(crate) trait MessageExt {
 }
 
 impl MessageExt for Message {
-    fn images(&self) -> impl IntoIterator<Item = &Attachment> {
+    fn images(&self) -> impl Iterator<Item = &Attachment> {
         self.attachments
             .iter()
             .filter(|att| att.width.is_some() && att.height.is_some())
