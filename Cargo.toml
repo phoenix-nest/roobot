@@ -12,6 +12,7 @@ name = "roobot-bin"
 path = "src/main.rs"
 
 [dependencies]
+async-trait = "0.1.83"
 base64 = "0.22.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 color-eyre = "0.6.3"

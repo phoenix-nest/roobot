@@ -1,10 +1,9 @@
 use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::io::Cursor;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use chrono::{Duration, Utc};
 use color_eyre::eyre::eyre;
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::Result;
 use img::process_icon;
 use itertools::Itertools;
 use message::MessageExt;
@@ -20,23 +19,13 @@ use tokio::time::sleep;
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, instrument, warn, Span};
 
-use crate::{util::send_or_log, Load, Module};
+use crate::{util::send_or_log, Module};
 
 mod img;
 mod message;
 mod state;
 
-pub(crate) struct IconUpdaterLoader {
-    client: Http,
-}
-
-impl Load for IconUpdaterLoader {
-    type State = State;
-
-    fn load(self, state: &Self::State) -> color_eyre::Result<impl Module> {
-        Ok(IconUpdater::from_loader(self, state))
-    }
-}
+pub(crate) const NAME: &str = "icon_updater";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct UpdateIconPayload {
@@ -76,7 +65,7 @@ impl IconUpdateTask {
                     .await
                 {
                     Ok(msg) => {
-                        let img = msg.images().into_iter().collect_vec().first().cloned();
+                        let img = msg.images().collect_vec().first().cloned();
                         if let Some(img) = img {
                             break Some((update, img.to_owned()));
                         };
@@ -152,52 +141,6 @@ pub(crate) struct IconUpdater {
     tasks: HashMap<GuildId, JoinHandle<()>>,
 }
 
-impl IconUpdater {
-    fn from_loader(loader: IconUpdaterLoader, state: &State) -> IconUpdater {
-        let settings = state.settings.clone();
-        let http = Arc::new(loader.client);
-        let state = Arc::from(Mutex::from(state.state.clone()));
-        let tasks = {
-            let settings = settings.clone();
-            settings
-                .into_iter()
-                .map(|(id, settings)| {
-                    let state = Arc::clone(&state);
-                    let http = Arc::clone(&http);
-                    (
-                        id,
-                        tokio::spawn(async move {
-                            let mut rng = rand::rngs::OsRng;
-                            let task = IconUpdateTask {
-                                client: http,
-                                guild_id: id,
-                                settings: settings.clone(),
-                                state,
-                            };
-                            loop {
-                                sleep(std::time::Duration::from_secs(
-                                    // distribute requests over half an hour
-                                    1800 + rng.gen_range(0..1800),
-                                ))
-                                .await;
-                                if let Err(err) = task.update_icon().await {
-                                    error!(error = "Icon update failed", guild = ?id, ?err);
-                                };
-                            }
-                        }),
-                    )
-                })
-                .collect::<HashMap<_, _>>()
-        };
-        IconUpdater {
-            client: http,
-            settings: settings.clone(),
-            state,
-            tasks,
-        }
-    }
-}
-
 #[async_trait]
 impl EventHandler for IconUpdater {
     #[instrument(skip(ctx), fields(guild_id, settings))]
@@ -214,7 +157,7 @@ impl EventHandler for IconUpdater {
             return;
         }
 
-        let imgs = msg.images().into_iter().collect_vec();
+        let imgs = msg.images().collect_vec();
         let img = match imgs.len() {
             0 => return,
             1 => imgs.first().unwrap(),
@@ -326,20 +269,76 @@ impl EventHandler for IconUpdater {
     }
 }
 
+#[async_trait]
 impl Module for IconUpdater {
-    type State = State;
-
-    async fn save(&self) -> Self::State {
-        State {
+    async fn state(&self) -> String {
+        serde_json::to_string(&State {
             settings: self.settings.clone(),
             state: self.state.lock().await.clone(),
-        }
+        })
+        .expect("Serialization of state should not fail")
     }
 
-    async fn shutdown(self) -> Self::State {
+    async fn shutdown(self: Box<Self>) -> String {
         for task in self.tasks.values() {
             task.abort();
         }
-        self.save().await
+        self.state().await
+    }
+
+    fn name(&self) -> &'static str {
+        NAME
+    }
+
+    fn load(state: Option<&str>, http: Arc<Http>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let state = match state {
+            None => State::default(),
+            Some(json) => serde_json::from_str(json)
+                .map_err(|e| eyre!("Could not load icon_udpater module state: {e}"))?,
+        };
+
+        let settings = state.settings.clone();
+        let state = Arc::from(Mutex::from(state.state.clone()));
+        let tasks = {
+            let settings = settings.clone();
+            settings
+                .into_iter()
+                .map(|(id, settings)| {
+                    let state = Arc::clone(&state);
+                    let http = Arc::clone(&http);
+                    (
+                        id,
+                        tokio::spawn(async move {
+                            let mut rng = rand::rngs::OsRng;
+                            let task = IconUpdateTask {
+                                client: http,
+                                guild_id: id,
+                                settings: settings.clone(),
+                                state,
+                            };
+                            loop {
+                                sleep(std::time::Duration::from_secs(
+                                    // distribute requests over half an hour
+                                    1800 + rng.gen_range(0..1800),
+                                ))
+                                .await;
+                                if let Err(err) = task.update_icon().await {
+                                    error!(error = "Icon update failed", guild = ?id, ?err);
+                                };
+                            }
+                        }),
+                    )
+                })
+                .collect::<HashMap<_, _>>()
+        };
+        Ok(IconUpdater {
+            client: http,
+            settings: settings.clone(),
+            state,
+            tasks,
+        })
     }
 }

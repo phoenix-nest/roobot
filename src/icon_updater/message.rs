@@ -1,7 +1,7 @@
 use serenity::all::{Attachment, Message};
 
 pub(crate) trait MessageExt {
-    fn images(&self) -> impl IntoIterator<Item = &Attachment>;
+    fn images(&self) -> impl Iterator<Item = &Attachment>;
 }
 
 impl MessageExt for Message {

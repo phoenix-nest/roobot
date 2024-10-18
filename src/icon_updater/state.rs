@@ -8,7 +8,7 @@ use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, MessageId, UserId};
 
-#[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Debug, Clone, Deserialize, Serialize, Default)]
 pub(crate) struct State {
     pub(crate) settings: HashMap<GuildId, ServerSettings>,
     pub(crate) state: HashMap<GuildId, ServerState>,
