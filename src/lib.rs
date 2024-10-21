@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use color_eyre::eyre::{eyre, Result};
 use icon_updater::IconUpdater;
 use serde::{Deserialize, Serialize};
-use serenity::all::Http;
+use serenity::all::{EventHandler, Http};
 
 mod icon_updater;
 mod util;
@@ -15,7 +15,7 @@ mod util;
 type State = String;
 
 #[async_trait]
-pub(crate) trait Module {
+pub(crate) trait Module: EventHandler {
     fn name(&self) -> &'static str;
     fn load<'a>(state: Option<&str>, http: Arc<Http>) -> Result<Self>
     where

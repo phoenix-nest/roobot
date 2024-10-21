@@ -15,6 +15,7 @@ path = "src/main.rs"
 async-trait = "0.1.83"
 base64 = "0.22.1"
 chrono = { version = "0.4.38", features = ["serde"] }
+clap = { version = "4.5.18", features = ["derive", "string", "env"] }
 color-eyre = "0.6.3"
 cron = "0.12.1"
 image = "0.25.2"
