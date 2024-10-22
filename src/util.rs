@@ -1,6 +1,5 @@
 use std::future::Future;
 
-use serenity::all::{ChannelId, Http, Message, MessageId};
 use tracing::error;
 
 pub async fn send_or_log<T>(send: impl Future<Output = serenity::Result<T>>) {

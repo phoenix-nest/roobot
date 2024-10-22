@@ -135,7 +135,6 @@ impl IconUpdateTask {
 
 #[derive(Debug)]
 pub(crate) struct IconUpdater {
-    client: Arc<Http>,
     settings: HashMap<GuildId, ServerSettings>,
     state: Arc<Mutex<HashMap<GuildId, ServerState>>>,
     tasks: HashMap<GuildId, JoinHandle<()>>,
@@ -184,11 +183,7 @@ impl EventHandler for IconUpdater {
                 let Some(update) = state.queue.back() else {
                     break None;
                 };
-                match self
-                    .client
-                    .get_message(settings.channel, update.message)
-                    .await
-                {
+                match ctx.http.get_message(settings.channel, update.message).await {
                     Ok(msg) => break Some(msg), // found valid message
                     Err(serenity::Error::Http(HttpError::UnsuccessfulRequest(e)))
                         if e.status_code == StatusCode::NOT_FOUND =>
@@ -271,26 +266,26 @@ impl EventHandler for IconUpdater {
 
 #[async_trait]
 impl Module for IconUpdater {
-    async fn state(&self) -> String {
+    fn save(&self) -> String {
         serde_json::to_string(&State {
             settings: self.settings.clone(),
-            state: self.state.lock().await.clone(),
+            state: self.state.blocking_lock().clone(),
         })
         .expect("Serialization of state should not fail")
     }
 
-    async fn shutdown(self: Box<Self>) -> String {
+    fn shutdown(self: Box<Self>) -> String {
         for task in self.tasks.values() {
             task.abort();
         }
-        self.state().await
+        self.save()
     }
 
     fn name(&self) -> &'static str {
         NAME
     }
 
-    fn load(state: Option<&str>, http: Arc<Http>) -> Result<Self>
+    fn load(state: Option<&str>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -302,43 +297,45 @@ impl Module for IconUpdater {
 
         let settings = state.settings.clone();
         let state = Arc::from(Mutex::from(state.state.clone()));
-        let tasks = {
-            let settings = settings.clone();
-            settings
-                .into_iter()
-                .map(|(id, settings)| {
-                    let state = Arc::clone(&state);
-                    let http = Arc::clone(&http);
-                    (
-                        id,
-                        tokio::spawn(async move {
-                            let mut rng = rand::rngs::OsRng;
-                            let task = IconUpdateTask {
-                                client: http,
-                                guild_id: id,
-                                settings: settings.clone(),
-                                state,
-                            };
-                            loop {
-                                sleep(std::time::Duration::from_secs(
-                                    // distribute requests over half an hour
-                                    1800 + rng.gen_range(0..1800),
-                                ))
-                                .await;
-                                if let Err(err) = task.update_icon().await {
-                                    error!(error = "Icon update failed", guild = ?id, ?err);
-                                };
-                            }
-                        }),
-                    )
-                })
-                .collect::<HashMap<_, _>>()
-        };
         Ok(IconUpdater {
-            client: http,
             settings: settings.clone(),
             state,
-            tasks,
+            tasks: HashMap::new(),
         })
+    }
+
+    async fn post_init(&mut self, http: Arc<Http>) -> Result<()> {
+        self.tasks = self
+            .settings
+            .clone()
+            .into_iter()
+            .map(|(id, settings)| {
+                let state = Arc::clone(&self.state);
+                let http = Arc::clone(&http);
+                (
+                    id,
+                    tokio::spawn(async move {
+                        let mut rng = rand::rngs::OsRng;
+                        let task = IconUpdateTask {
+                            client: http,
+                            guild_id: id,
+                            settings: settings.clone(),
+                            state,
+                        };
+                        loop {
+                            sleep(std::time::Duration::from_secs(
+                                // distribute requests over half an hour
+                                1800 + rng.gen_range(0..1800),
+                            ))
+                            .await;
+                            if let Err(err) = task.update_icon().await {
+                                error!(error = "Icon update failed", guild = ?id, ?err);
+                            };
+                        }
+                    }),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        Ok(())
     }
 }

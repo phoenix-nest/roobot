@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, MessageId, UserId};

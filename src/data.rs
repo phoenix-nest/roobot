@@ -7,6 +7,7 @@ use color_eyre::eyre::{Context, Result};
 
 const STATE_FILE_NAME: &str = "state.json";
 
+#[derive(Debug)]
 pub(crate) struct Datastore {
     base_path: PathBuf,
 }
